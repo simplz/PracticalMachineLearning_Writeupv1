@@ -1,0 +1,94 @@
+---
+title: "Practical Machine Learning Writeup"
+author: "Lin CK"
+date: "Thursday, August 27, 2015"
+output: html_document
+---
+# Practical Machine Learning - Prediction Assignment Writeup
+
+The provided data is to determine what activity an individual performs. Use of caret and randomForest to generate answers for each of the 20 test data cases. Use of a seed value for consistent results.
+
+```{r}
+library(Hmisc)
+library(caret)
+library(randomForest)
+library(foreach)
+library(doParallel)
+set.seed(2048)
+options(warn=-1)
+```
+
+Load the data from the provided training and test data provided by Coursera.
+
+```{r}
+training_data <- read.csv("pml-training.csv", na.strings=c("#DIV/0!") )
+evaluation_data <- read.csv("pml-testing.csv", na.strings=c("#DIV/0!") )
+```
+
+```{r}
+for(i in c(8:ncol(training_data)-1)) {training_data[,i] = as.numeric(as.character(training_data[,i]))}
+
+for(i in c(8:ncol(evaluation_data)-1)) {evaluation_data[,i] = as.numeric(as.character(evaluation_data[,i]))}
+```
+
+Determine and display out feature set.
+
+```{r}
+feature_set <- colnames(training_data[colSums(is.na(training_data)) == 0])[-(1:7)]
+model_data <- training_data[feature_set]
+feature_set
+```
+
+```{r}
+idx <- createDataPartition(y=model_data$classe, p=0.75, list=FALSE )
+training <- model_data[idx,]
+testing <- model_data[-idx,]
+```
+
+Build 5 random forests with 150 trees each. Make use of parallel processing to build this model. 
+
+```{r}
+registerDoParallel()
+x <- training[-ncol(training)]
+y <- training$classe
+
+rf <- foreach(ntree=rep(150, 6), .combine=randomForest::combine, .packages='randomForest') %dopar% {
+randomForest(x, y, ntree=ntree) 
+}
+```
+
+Error reports 
+
+```{r}
+predictions1 <- predict(rf, newdata=training)
+confusionMatrix(predictions1,training$classe)
+
+
+predictions2 <- predict(rf, newdata=testing)
+confusionMatrix(predictions2,testing$classe)
+```
+
+## Conclusions and Test Data Submit
+
+The test data was around 99% accurate and nearly all of the submitted test cases to be correct. 
+
+Prepare the submission. (using COURSERA provided code)
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+
+x <- evaluation_data
+x <- x[feature_set[feature_set!='classe']]
+answers <- predict(rf, newdata=x)
+
+answers
+
+pml_write_files(answers)
+```
